@@ -1,0 +1,13 @@
+{
+  "name": "mc-pvp-bots",
+  "description": "Fight Minecraft PvP bots while Claude works",
+  "owner": {
+    "name": "Fatih Baştan"
+  },
+  "plugins": [
+    {
+      "name": "mc-pvp-bots",
+      "source": "./"
+    }
+  ]
+}

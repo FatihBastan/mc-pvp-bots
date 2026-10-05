@@ -1,0 +1,14 @@
+{
+  "name": "mc-pvp-bots",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Claude Code mod: Minecraft PvP vs bots while Claude works",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test arena/test/*.test.mjs && claude plugin test .",
+    "validate": "claude plugin validate ."
+  }
+}

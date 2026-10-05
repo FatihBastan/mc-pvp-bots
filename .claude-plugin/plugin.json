@@ -1,0 +1,113 @@
+{
+  "name": "mc-pvp-bots",
+  "version": "0.1.0",
+  "description": "Fight Minecraft PvP bots while Claude works, and get handed back the moment it's done or needs you.",
+  "author": {
+    "name": "Fatih Baştan"
+  },
+  "homepage": "https://github.com/FatihBastan/mc-pvp-bots",
+  "repository": "https://github.com/FatihBastan/mc-pvp-bots",
+  "license": "MIT",
+  "keywords": [
+    "minecraft",
+    "pvp",
+    "game",
+    "while-you-wait",
+    "mod"
+  ],
+  "userConfig": {
+    "bots": {
+      "type": "string",
+      "title": "Bots in the arena",
+      "description": "How many bots fight in the free-for-all",
+      "options": [
+        "4",
+        "6",
+        "8"
+      ],
+      "default": "8"
+    },
+    "difficulty": {
+      "type": "string",
+      "title": "Bot difficulty",
+      "description": "mixed puts rookies to sweats in one lobby; the others make every bot that tier",
+      "options": [
+        "mixed",
+        "easy",
+        "medium",
+        "hard"
+      ],
+      "default": "mixed"
+    },
+    "dropInSeconds": {
+      "type": "number",
+      "title": "Drop in after (seconds)",
+      "description": "How long Claude must have been working before you are pulled into the arena; short turns never interrupt you",
+      "default": 10
+    },
+    "handBackSeconds": {
+      "type": "number",
+      "title": "Hand back after (seconds)",
+      "description": "Grace period between Claude finishing and switching you back to the terminal; the bots freeze at once",
+      "default": 2
+    },
+    "graceSeconds": {
+      "type": "number",
+      "title": "Grace countdown (seconds)",
+      "description": "Every time you enter or re-enter the arena: a countdown during which you can't be hurt and bots leave you alone",
+      "default": 3
+    },
+    "afkSeconds": {
+      "type": "number",
+      "title": "AFK after (seconds)",
+      "description": "Mid-fight, no camera movement for this long (you alt-tabbed to Claude) makes you protected and ignored until you move again; 0 turns it off",
+      "default": 2
+    },
+    "switchWindows": {
+      "type": "boolean",
+      "title": "Switch windows for me",
+      "description": "Bring Minecraft to the front on drop-in and the terminal back when Claude is done or needs you",
+      "default": true
+    },
+    "closeMinecraft": {
+      "type": "boolean",
+      "title": "Close Minecraft with the arena",
+      "description": "When the arena shuts down (idle, /pvp off, /pvp stop), also close the Minecraft it launched; never any other Minecraft",
+      "default": true
+    },
+    "launcher": {
+      "type": "string",
+      "title": "How Minecraft starts",
+      "description": "prism launches a dedicated Prism Launcher instance that joins the arena; manual means you join 127.0.0.1 yourself",
+      "options": [
+        "prism",
+        "manual"
+      ],
+      "default": "prism"
+    },
+    "prismPath": {
+      "type": "string",
+      "title": "Prism Launcher executable",
+      "description": "Leave empty to find it in the usual install locations",
+      "default": ""
+    },
+    "idleMinutes": {
+      "type": "number",
+      "title": "Close the arena after idle (minutes)",
+      "description": "The server and bots shut down after this long with Claude idle and nobody fighting",
+      "default": 15
+    },
+    "serverPort": {
+      "type": "number",
+      "title": "Minecraft server port",
+      "description": "Local port the arena server listens on (127.0.0.1 only)",
+      "default": 25599
+    },
+    "controlPort": {
+      "type": "number",
+      "title": "Control port",
+      "description": "Local port the mod uses to talk to the arena daemon",
+      "default": 25601
+    }
+  }
+}

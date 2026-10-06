@@ -1,5 +1,6 @@
 {
   "name": "mc-pvp-bots",
+  "displayName": "MC PvP Bots",
   "version": "0.1.2",
   "description": "Fight Minecraft PvP bots while Claude works, and get handed back the moment it's done or needs you.",
   "author": {
@@ -7,6 +8,9 @@
   },
   "homepage": "https://github.com/FatihBastan/mc-pvp-bots",
   "repository": "https://github.com/FatihBastan/mc-pvp-bots",
+  "supportUrl": "https://github.com/FatihBastan/mc-pvp-bots/issues",
+  "documentationUrl": "https://github.com/FatihBastan/mc-pvp-bots/blob/main/docs/HOW-IT-WORKS.md",
+  "privacyPolicyUrl": "https://github.com/FatihBastan/mc-pvp-bots#what-it-runs-and-sends",
   "license": "MIT",
   "keywords": [
     "minecraft",

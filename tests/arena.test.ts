@@ -352,14 +352,20 @@ describe('the question step', () => {
     expect(result).toEqual({ result: 'ok' })
   })
 
-  test('a permission request a settings hook answers never pulls you out', async ($, on) => {
+  test('a permission request a settings hook answers puts you straight back in', async ($, on) => {
     const w = world(on)
     w.permission.answer = { decision: { behavior: 'allow' } }
     await $.session.start(START)
     await $.turn.start({ text: 'go', turnId: 't1' })
     await w.clock.advance(11_000)
+    expect(w.to('/play').length).toBe(1)
+    const finish = w.startCall((c) => $.tool.call(c as never), { tool: 'Bash', command: 'ls', tool_use_id: 's1' })
+    await w.clock.advance(10)
     await $.classic.PermissionRequest({ tool_name: 'Bash', tool_input: { command: 'ls' } } as never)
-    expect(w.to('/pause').length).toBe(0)
+    // Your hook allowed it: no dialog, the call runs and ends at once
+    await finish()
+    await w.clock.advance(1_600)
+    expect(w.to('/play').length).toBe(2)
   })
 })
 

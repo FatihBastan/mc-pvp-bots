@@ -524,17 +524,15 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
-  // Only watches: the request goes on to Claude Code and your settings
-  // unchanged, and their answer comes back unchanged. No answer from them
-  // means the dialog goes up and Claude is waiting on you, so the fight
-  // freezes. The mod never answers or changes a permission request.
+  // A permission dialog is about to show, so Claude is waiting on you: the
+  // fight freezes (in the background, so the dialog isn't held up). Decides
+  // nothing: the request goes on unchanged, and Claude Code, your settings
+  // and you answer it. If a settings hook of yours answers instead, the call
+  // simply carries on and you're back in a moment later.
   on('classic.PermissionRequest', async ($, e, next) => {
-    const result = await next(e)
-    if (result.decision === undefined) {
-      awaitingToolUseId = callFor(e.tool_name)
-      await pullOut($, 'permission')
-    }
-    return result
+    awaitingToolUseId = callFor(e.tool_name)
+    pullOut($, 'permission').catch(() => undefined)
+    return next(e)
   })
 
   // You approved and the command is still running: Claude Code shows its

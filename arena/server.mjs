@@ -13,7 +13,7 @@ import { stopIfMatches } from './proc.mjs'
 export const MC_VERSION = '1.21.4'
 // PaperMC's download service asks every client to identify itself with a
 // contact. A fork should put its own repo here.
-export const USER_AGENT = 'mc-pvp-bots/0.1.1 (+https://github.com/FatihBastan/mc-pvp-bots)'
+export const USER_AGENT = 'mc-pvp-bots/0.1.2 (+https://github.com/FatihBastan/mc-pvp-bots)'
 
 const PAPER_BUILDS = `https://fill.papermc.io/v3/projects/paper/versions/${MC_VERSION}/builds`
 

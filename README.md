@@ -148,7 +148,7 @@ Everything the mod does outside Claude Code, for anyone who wants to check befor
 | :- | :- |
 | `turn.start`, `turn.complete` | Start the 10-second drop-in timer, and hand you back when Claude is done |
 | `tool.call` | Notice when Claude asks you something (AskUserQuestion, ExitPlanMode) and when a call ends, to put you back in. Every call and its result pass through unchanged. |
-| `classic.PermissionRequest` | Notice that a permission dialog is about to show, so the fight freezes and your terminal comes back. The request and its answer pass through unchanged: the mod never approves, denies or changes a permission. |
+| `classic.PermissionRequest` | Notice that a permission dialog is about to show, so the fight freezes and your terminal comes back. It decides nothing: the request goes on unchanged, and Claude Code, your settings and you answer it. The mod never approves, denies or changes a permission. |
 | `classic.Notification`, `classic.ElicitationResult` | Notice other "Claude needs you" prompts, and forms you've filled in |
 | `ui.render` (Spinner, ToolProgress) | Show your score next to the spinner, and spot when an approved command starts running |
 | `command.run` (`/pvp` only) | The `/pvp` command |

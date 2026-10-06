@@ -1,6 +1,6 @@
 {
   "name": "mc-pvp-bots",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Fight Minecraft PvP bots while Claude works, and get handed back the moment it's done or needs you.",
   "author": {
     "name": "Fatih Baştan"

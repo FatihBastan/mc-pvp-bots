@@ -6,32 +6,61 @@ You send Claude a big task. Instead of watching a spinner, you're dropped into a
 
 It all runs on your own computer. No servers to pay for, no accounts besides your own Minecraft.
 
-<!-- Add a short GIF here: drop-in → fight → "Claude's done" → back in the terminal -->
-
 ---
 
-## Install
+## 1. Before you start
+
+You need:
+
+- **Minecraft: Java Edition.** You need to own it.
+- **[Prism Launcher](https://prismlauncher.org).** Open it once and add your Microsoft account. You don't need to create any profile; the mod makes its own.
+- **Java 21** or newer
+- **Node.js 20** or newer
+- **Claude Code 2.1.287** or newer. Check with `claude --version`, and update with `claude update`.
+- 4–6 GB of free memory while you play
+
+On **Windows**, install the first three with:
+
+```
+winget install --exact --id PrismLauncher.PrismLauncher --source winget
+winget install --exact --id EclipseAdoptium.Temurin.21.JDK --source winget
+winget install --exact --id OpenJS.NodeJS.LTS --source winget
+```
+
+On **macOS**:
+
+```
+brew install --cask prismlauncher temurin@21
+brew install node
+```
+
+Open a new terminal afterwards so `java` and `node` are found.
+
+Don't want Prism? Set the launcher to `manual` in `/config` and join `127.0.0.1:25599` from your normal Minecraft launcher, using version 1.21.4.
+
+## 2. Install
 
 In Claude Code:
 
 ```
 /plugin marketplace add FatihBastan/mc-pvp-bots
 /plugin install mc-pvp-bots@mc-pvp-bots
+/reload-plugins
+```
+
+Restarting Claude Code works instead of `/reload-plugins`.
+
+## 3. First run
+
+```
 /pvp on
 ```
 
-The first `/pvp on` asks you to accept Minecraft's EULA, then sets everything up. It takes a couple of minutes, once. Progress shows under the prompt. The first time you're dropped in, Prism also downloads Minecraft 1.21.4 for its own instance, so that first launch is slower.
+1. Accept Minecraft's EULA when asked. Setup runs once and takes a couple of minutes; watch the line under the prompt.
+2. Wait for **"Arena ready"**.
+3. Try it right away with `/pvp play`. Minecraft opens and joins the arena. The very first launch downloads Minecraft 1.21.4 into Prism, so give it a minute.
 
-## What you need
-
-- **Minecraft: Java Edition** (you need to own it)
-- **[Prism Launcher](https://prismlauncher.org)**, with your Microsoft account added once. On Windows: `winget install --exact PrismLauncher.PrismLauncher`
-- **Java 21** or newer, e.g. [Temurin 21](https://adoptium.net)
-- **Node.js 20** or newer
-- **Claude Code 2.1.287** or newer
-- 4–6 GB of free memory while you play
-
-Don't want Prism? Set the launcher to `manual` and join `127.0.0.1:25599` from your normal Minecraft launcher.
+After that, just use Claude as usual. Any task that keeps Claude busy for more than 10 seconds drops you in.
 
 ## How it plays
 

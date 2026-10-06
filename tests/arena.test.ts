@@ -31,8 +31,12 @@ function world(on: On, store: Record<string, unknown> = { isOn: true, isSetUp: t
   on('session.end', ($, e) => ({ sessionId: e.sessionId }))
   on('turn.start', ($, e) => ({ turnId: e.turnId }))
   on('turn.complete', ($, e) => ({ text: e.answer }))
-  on('tool.check', () => ({ decision: 'ask' as const }))
-  on('tool.call', () => ({ result: 'ok' }) as never)
+  // A tool call stays under way while gate.wait is pending, as one waiting on its permission dialog does
+  const gate: { wait: Promise<void> | null } = { wait: null }
+  on('tool.call', async () => {
+    if (gate.wait) await gate.wait
+    return { result: 'ok' } as never
+  })
   on('classic.Notification', () => ({}))
   // What the settings hooks beneath answer a permission request with ({}: nothing, so a dialog shows)
   const permission: { answer: Record<string, unknown> } = { answer: {} }
@@ -55,11 +59,10 @@ function world(on: On, store: Record<string, unknown> = { isOn: true, isSetUp: t
   })
   on('process.run', ($, e) => {
     argvs.push([...e.argv])
-    const stdout = e.argv.includes('-e')
-      ? '4242' // node -e printing its parent: Claude Code's pid
-      : e.argv.includes('ensure')
-        ? JSON.stringify({ ok: true, port: 25601, token: 'tok', pid: 1 })
-        : JSON.stringify({ ok: true, wasRunning: true })
+    // ensure also says who started it (parent): Claude Code's pid
+    const stdout = e.argv.includes('ensure')
+      ? JSON.stringify({ ok: true, port: 25601, token: 'tok', pid: 1, parent: 4242 })
+      : JSON.stringify({ ok: true, wasRunning: true })
     return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
   on('http.fetch', ($, e) => {
@@ -73,7 +76,18 @@ function world(on: On, store: Record<string, unknown> = { isOn: true, isSetUp: t
     return { value: { status: 200, ok: true, headers: {}, text: JSON.stringify(reply) } }
   })
   const to = (path: string) => calls.filter((c) => c.path === path)
-  return { calls, toasts, logs, statuses, argvs, clock, daemon, kv, to, permission }
+  // Starts a tool call that waits (on its permission dialog, say) until released
+  const startCall = (run: (call: object) => Promise<unknown>, call: object) => {
+    let release!: () => void
+    gate.wait = new Promise<void>((r) => (release = r))
+    const done = run(call)
+    return async () => {
+      gate.wait = null
+      release()
+      await done
+    }
+  }
+  return { calls, toasts, logs, statuses, argvs, clock, daemon, kv, to, permission, startCall }
 }
 
 const START = { cwd: '/proj', surface: null, isInteractive: true } as const
@@ -115,13 +129,14 @@ describe('dropping in', () => {
     await $.turn.start({ text: 'deploy', turnId: 't1' })
     await w.clock.advance(11_000)
     expect(w.to('/play').length).toBe(1)
-    await $.tool.check({ tool: 'Bash', input: { command: 'rm -rf build' }, tool_use_id: 'u1' } as never)
-    // An "ask" alone isn't a dialog yet (auto mode may answer it)
+    // The call waits on its dialog; a call alone pulls nobody out (auto mode may answer it)
+    const finish = w.startCall((c) => $.tool.call(c as never), { tool: 'Bash', command: 'rm -rf build', tool_use_id: 'u1' })
+    await w.clock.advance(10)
     expect(w.to('/pause').length).toBe(0)
     await $.classic.PermissionRequest({ tool_name: 'Bash', tool_input: { command: 'rm -rf build' } } as never)
     expect(w.to('/pause').at(-1)!.body.reason).toBe('permission')
     // The person answers; the tool runs; Claude carries on
-    await $.tool.call({ tool: 'Bash', command: 'rm -rf build', tool_use_id: 'u1' } as never)
+    await finish()
     await w.clock.advance(11_000)
     expect(w.to('/play').length).toBe(2)
     await $.turn.complete({ ...DONE, turnId: 't1' })
@@ -299,7 +314,8 @@ describe('the question step', () => {
     await $.turn.start({ text: 'wait then ask me', turnId: 't1' })
     await w.clock.advance(11_000)
     expect(w.to('/play').length).toBe(1)
-    await $.tool.check({ tool: 'Bash', input: { command: 'sleep 25' }, tool_use_id: 'u7' } as never)
+    const finish = w.startCall((c) => $.tool.call(c as never), { tool: 'Bash', command: 'sleep 25', tool_use_id: 'u7' })
+    await w.clock.advance(10)
     await $.classic.PermissionRequest({ tool_name: 'Bash', tool_input: { command: 'sleep 25' } } as never)
     expect(w.to('/pause').at(-1)!.body.reason).toBe('permission')
     // Approved: the command runs, and Claude Code shows its background hint
@@ -310,7 +326,9 @@ describe('the question step', () => {
       props: { tool_use_id: 'u7', kind: 'background_hint', hint: '(ctrl+b to run in background)' },
     } as never)
     await w.clock.advance(2_500)
+    // Back in while the command still runs
     expect(w.to('/play').length).toBe(2)
+    await finish()
   })
 
   test("Claude's question pulls you out as a question", async ($, on) => {
@@ -320,6 +338,18 @@ describe('the question step', () => {
     await w.clock.advance(11_000)
     await $.tool.call({ tool: 'AskUserQuestion', questions: [], tool_use_id: 'u8' } as never)
     expect(w.to('/pause').at(-1)!.body.reason).toBe('question')
+  })
+
+  test('permission answers and tool results pass through unchanged', async ($, on) => {
+    const w = world(on)
+    w.permission.answer = { decision: { behavior: 'deny', message: 'not here' } }
+    await $.session.start(START)
+    await $.turn.start({ text: 'go', turnId: 't1' })
+    await w.clock.advance(11_000)
+    const answer = await $.classic.PermissionRequest({ tool_name: 'Bash', tool_input: { command: 'ls' } } as never)
+    expect(answer).toEqual({ decision: { behavior: 'deny', message: 'not here' } })
+    const result = await $.tool.call({ tool: 'Read', file_path: '/proj/a.ts', tool_use_id: 'r1' } as never)
+    expect(result).toEqual({ result: 'ok' })
   })
 
   test('a permission request a settings hook answers never pulls you out', async ($, on) => {
@@ -340,11 +370,12 @@ describe('back in right after you answer', () => {
     await $.turn.start({ text: 'deploy', turnId: 't1' })
     await w.clock.advance(11_000)
     expect(w.to('/play').length).toBe(1)
-    await $.tool.check({ tool: 'Bash', input: { command: 'npm publish' }, tool_use_id: 'p1' } as never)
+    const finish = w.startCall((c) => $.tool.call(c as never), { tool: 'Bash', command: 'npm publish', tool_use_id: 'p1' })
+    await w.clock.advance(10)
     await $.classic.PermissionRequest({ tool_name: 'Bash', tool_input: { command: 'npm publish' } } as never)
     expect(w.to('/pause').at(-1)!.body.reason).toBe('permission')
     // Approved; a quick command runs and returns
-    await $.tool.call({ tool: 'Bash', command: 'npm publish', tool_use_id: 'p1' } as never)
+    await finish()
     await w.clock.advance(1_600)
     expect(w.to('/play').length).toBe(2)
   })

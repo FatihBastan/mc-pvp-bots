@@ -13,7 +13,7 @@ import { stopIfMatches } from './proc.mjs'
 export const MC_VERSION = '1.21.4'
 // PaperMC's download service asks every client to identify itself with a
 // contact. A fork should put its own repo here.
-export const USER_AGENT = 'mc-pvp-bots/0.1.0 (+https://github.com/FatihBastan/mc-pvp-bots)'
+export const USER_AGENT = 'mc-pvp-bots/0.1.1 (+https://github.com/FatihBastan/mc-pvp-bots)'
 
 const PAPER_BUILDS = `https://fill.papermc.io/v3/projects/paper/versions/${MC_VERSION}/builds`
 
@@ -73,6 +73,11 @@ export async function ensurePaper(dataDir, log = () => {}) {
   const build = builds.find((b) => b.channel === 'STABLE') ?? builds[0]
   const download = build?.downloads?.['server:default']
   if (!download?.url) throw new Error('Paper build list had no download')
+  // Only ever from Paper's own servers, over https
+  const from = new URL(download.url)
+  if (from.protocol !== 'https:' || !(from.hostname === 'papermc.io' || from.hostname.endsWith('.papermc.io'))) {
+    throw new Error(`Paper download is not from papermc.io over https: ${from.origin}`)
+  }
   log(`downloading Paper build ${build.id}`)
   const jarRes = await fetch(download.url, { headers: { 'User-Agent': USER_AGENT } })
   if (!jarRes.ok) throw new Error(`Paper download: HTTP ${jarRes.status}`)
@@ -82,7 +87,6 @@ export async function ensurePaper(dataDir, log = () => {}) {
   const expected = download.checksums?.sha256
   if (typeof expected !== 'string' || !/^[0-9a-f]{64}$/i.test(expected)) throw new Error('Paper build list had no checksum')
   if (expected.toLowerCase() !== sha) throw new Error('Paper download failed its checksum')
-  if (!/^https:\/\//.test(download.url)) throw new Error('Paper download is not https')
   await writeFile(jar + '.part', bytes)
   await rename(jar + '.part', jar)
   return jar

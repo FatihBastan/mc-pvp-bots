@@ -103,7 +103,7 @@ Timings, window switching and more are in `/config`, under mc-pvp-bots.
 No. The game runs in its own processes. Minecraft is capped at 60 fps with low render distance, the server is a tiny empty world, and the bots do nothing while frozen.
 
 **Does anything get sent online?**
-Not from the arena. The server only accepts connections from your own computer, and it reports nothing anywhere (the server's built-in usage stats are switched off). The only downloads are the one-time setup: the Paper server, the bot library, and Minecraft itself through Prism. Minecraft talks to Microsoft as usual when you log in, like it always does.
+Not from the arena. The server only accepts connections from your own computer, and it reports nothing anywhere (the server's built-in usage stats are switched off). The only downloads are the one-time setup: the Paper server, the bot library, and Minecraft itself through Prism. Minecraft talks to Microsoft as usual when you log in, like it always does. The full list is under [What it runs and sends](#what-it-runs-and-sends).
 
 **What happens if I close something?**
 Nothing is left running. Close Minecraft and the bots stop. Quit or crash Claude Code and the arena pauses by itself. When nobody's used it for 15 minutes, it shuts down and closes the Minecraft it opened. It never touches your other Minecraft instances.
@@ -116,6 +116,43 @@ Yes. Switching windows works best on macOS and Linux (X11). On Wayland and some 
 
 **Why Minecraft 1.21.4?**
 It's the version the bots are most reliable on. Prism installs it for you in a separate instance, so your own Minecraft is untouched.
+
+## What it runs and sends
+
+Everything the mod does outside Claude Code, for anyone who wants to check before installing.
+
+**Programs it starts**
+
+- `node arena/ctl.mjs` from the plugin folder, with `setup`, `ensure` or `stop`. `ensure` starts the arena in the background (`node arena/daemon.mjs`), and `stop` shuts it down.
+- The arena runs Java with the Paper server (kept in `~/.claude-pvp`), listening on 127.0.0.1 only, and the bots inside its own Node process.
+- Prism Launcher, to start Minecraft in its own "Claude PvP" instance.
+- Setup, once: `npm ci --omit=dev --ignore-scripts` in `arena/runtime`, which installs the bot library exactly as the lockfile pins it and runs no install scripts.
+- To switch between the game and your terminal: PowerShell on Windows, `open` and `osascript` on macOS, `xdotool` or `wmctrl` on Linux.
+- To find and close only its own processes: `ps` or PowerShell, and `taskkill` on Windows. It checks a process's command line before closing it, so it never touches your other Minecraft.
+
+**What goes over the network**
+
+- Setup downloads, once: the Paper server from papermc.io over https (its sha256 is checked before it's used), the bot library from the npm registry (pinned by the lockfile), and Minecraft 1.21.4 through Prism.
+- After that, the mod only talks to the arena on your own computer, at `http://127.0.0.1:25601` (the control port in `/config`). It sends: the number of bots, the difficulty, your timing settings, the Claude Code session id (so each session gets a fresh leaderboard), and which terminal window to bring back (its app id, window id, `TERM_PROGRAM`, and Claude Code's process id). It never sends your prompts, Claude's answers, files or tool inputs, there or anywhere else.
+- Each of those requests carries a random token that setup creates in `~/.claude-pvp/control.json` (readable only by you), so other programs on your computer can't control the arena. It isn't a login for any online service and never leaves your computer.
+- No telemetry, and Paper's usage stats are switched off.
+
+**What it reads**
+
+- Environment: `HOME` or `USERPROFILE` (where to keep `~/.claude-pvp`), and `TERM_PROGRAM`, `WINDOWID` and `__CFBundleIdentifier` (which window to switch back to).
+- Prism's settings, to find its instances folder. It never opens Prism's accounts file; it only checks the file isn't empty, to remind you to add your account.
+
+**What each hook does**
+
+| Hook | Why |
+| :- | :- |
+| `turn.start`, `turn.complete` | Start the 10-second drop-in timer, and hand you back when Claude is done |
+| `tool.call` | Notice when Claude asks you something (AskUserQuestion, ExitPlanMode) and when a call ends, to put you back in. Every call and its result pass through unchanged. |
+| `classic.PermissionRequest` | Notice that a permission dialog is about to show, so the fight freezes and your terminal comes back. The request and its answer pass through unchanged: the mod never approves, denies or changes a permission. |
+| `classic.Notification`, `classic.ElicitationResult` | Notice other "Claude needs you" prompts, and forms you've filled in |
+| `ui.render` (Spinner, ToolProgress) | Show your score next to the spinner, and spot when an approved command starts running |
+| `command.run` (`/pvp` only) | The `/pvp` command |
+| `session.start`, `session.end` | Load your settings, and freeze the arena when you quit Claude Code |
 
 ## Uninstall
 

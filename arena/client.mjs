@@ -3,7 +3,7 @@
 
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, isAbsolute, join } from 'node:path'
 import { MC_VERSION } from './server.mjs'
@@ -114,10 +114,12 @@ async function instancesDir(prismData) {
   return join(prismData, 'instances')
 }
 
+// Only a hint for setup ("add your account in Prism"). accounts.json holds
+// sign-in tokens, so it is never opened: an empty list is a few dozen bytes,
+// one account is well over a kilobyte.
 export async function hasPrismAccount(prismData) {
   try {
-    const json = JSON.parse(await readFile(join(prismData, 'accounts.json'), 'utf8'))
-    return Array.isArray(json.accounts) && json.accounts.length > 0
+    return (await stat(join(prismData, 'accounts.json'))).size > 200
   } catch {
     return false
   }

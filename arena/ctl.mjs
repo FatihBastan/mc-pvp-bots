@@ -95,7 +95,7 @@ async function ensure() {
     await new Promise((r) => setTimeout(r, 500))
     up = await health(port, token)
   }
-  if (up && up.phase !== 'stopping') return out({ ok: true, port, token, pid: up.pid, phase: up.phase, already: true })
+  if (up && up.phase !== 'stopping') return out({ ok: true, port, token, pid: up.pid, phase: up.phase, already: true, parent: process.ppid })
   // Crash output only; start it over once it passes a megabyte
   const outPath = join(dataDir, 'daemon.out')
   const tooBig = await stat(outPath).then((s) => s.size > 1024 * 1024, () => false)
@@ -123,7 +123,7 @@ async function ensure() {
   for (let i = 0; i < 40; i++) {
     await new Promise((r) => setTimeout(r, 150))
     const h = await health(port, token)
-    if (h) return out({ ok: true, port, token, pid: h.pid, phase: h.phase, already: false })
+    if (h) return out({ ok: true, port, token, pid: h.pid, phase: h.phase, already: false, parent: process.ppid })
     if (child.exitCode !== null) break
   }
   out({ ok: false, error: `the arena daemon did not start; see ${join(dataDir, 'daemon.out')}` })

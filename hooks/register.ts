@@ -7,7 +7,7 @@
 
 import type { EngineInterface, PluginOptions, Register } from 'claude-code'
 
-type $ = EngineInterface
+type Api = EngineInterface
 
 type Config = {
   bots: number
@@ -50,9 +50,9 @@ type Reply = {
   step?: string
   detail?: string
   warnings?: string[]
+  parent?: number
 }
 
-const COMMAND = 'pvp'
 const USAGE = '/pvp [on | off | setup | status | play | stop | bots 4|6|8 | difficulty mixed|easy|medium|hard]'
 const ASKS_USER = new Set(['AskUserQuestion', 'ExitPlanMode'])
 // Notifications that mean Claude is blocked on you. Not idle_prompt: that
@@ -75,9 +75,9 @@ let drop: Drop = { kills: 0, deaths: 0 }
 let conn: { port: number; token: string } | null = null
 let starting: Promise<boolean> | null = null
 let isSettingUp = false
-// The call whose permission check said "ask", and the one whose dialog
-// pulled you out (to spot the moment it's answered)
-let askedToolUseId: string | null = null
+// Tool calls under way, newest last (a permission dialog belongs to one of
+// them), and the one whose dialog pulled you out, to spot when it's answered
+const running: { id: string; tool: string }[] = []
 let awaitingToolUseId: string | null = null
 // Pulled out of a fight to answer Claude: once answered you go straight back
 // in (the arena's 3-2-1 countdown follows). The short wait absorbs a turn
@@ -108,7 +108,7 @@ function readConfig(options: PluginOptions, overrides: { bots?: unknown; difficu
   }
 }
 
-function ctlPath($: $) {
+function ctlPath($: Api) {
   return `${$.plugin.root}/arena/ctl.mjs`
 }
 
@@ -134,7 +134,7 @@ function lastJson(text: string): Reply | null {
 }
 
 // Starts the daemon if it isn't running. Cheap when it is.
-function ensureDaemon($: $): Promise<boolean> {
+function ensureDaemon($: Api): Promise<boolean> {
   if (!dataDir) return Promise.resolve(false)
   starting ??= (async () => {
     try {
@@ -146,6 +146,10 @@ function ensureDaemon($: $): Promise<boolean> {
         return false
       }
       conn = { port: reply.port, token: reply.token }
+      // ctl's parent is Claude Code itself: the arena walks up from it to the
+      // window to hand you back to
+      const parent = String(reply.parent ?? '')
+      if (/^[1-9]\d{0,9}$/.test(parent)) terminal = { ...terminal, pid: parent }
       return true
     } catch (error) {
       $.ui.log(`could not run node (${String(error)})`, { to: 'debug' })
@@ -158,15 +162,11 @@ function ensureDaemon($: $): Promise<boolean> {
   return starting
 }
 
-async function api($: $, path: string, body?: object): Promise<Reply | null> {
+async function api($: Api, path: string, body?: object): Promise<Reply | null> {
   for (let attempt = 0; attempt < 2; attempt++) {
     if (!conn && !(await ensureDaemon($))) return null
     try {
-      const res = await $.http.fetch(`http://127.0.0.1:${conn!.port}${path}`, {
-        method: body ? 'POST' : 'GET',
-        headers: { 'x-arena-token': conn!.token, 'content-type': 'application/json' },
-        body: body ? JSON.stringify(body) : undefined,
-      })
+      const res = await $.http.fetch(`http://127.0.0.1:${conn!.port}${path}`, { method: body ? 'POST' : 'GET', headers: { 'x-arena-token': conn!.token, 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined })
       return JSON.parse(res.text) as Reply
     } catch {
       // The daemon idled out or crashed: start it again once
@@ -176,10 +176,19 @@ async function api($: $, path: string, body?: object): Promise<Reply | null> {
   return null
 }
 
+// On the way out of the session: one direct call, no restart of the daemon
+async function sendPause($: Api, to: { port: number; token: string }) {
+  try {
+    await $.http.fetch(`http://127.0.0.1:${to.port}/pause`, { method: 'POST', headers: { 'x-arena-token': to.token, 'content-type': 'application/json' }, body: JSON.stringify({ reason: 'lost' }) })
+  } catch {
+    // The arena is already gone; it pauses by itself once check-ins stop
+  }
+}
+
 const ON_STATUS = '⚔ pvp on'
 
 // What the arena is doing, in the status line until you're in the game
-function showProgress($: $, s: Reply | null) {
+function showProgress($: Api, s: Reply | null) {
   if (!s) return
   if (s.humans && s.humans.length > 0) $.ui.status('⚔ in the arena')
   else if (s.phase === 'booting') $.ui.status('⚔ arena warming up (the first boot takes a minute)…')
@@ -204,7 +213,7 @@ function scoreText(d: Drop) {
   return `${d.kills} ${d.kills === 1 ? 'kill' : 'kills'}, ${d.deaths} ${d.deaths === 1 ? 'death' : 'deaths'}`
 }
 
-function redraw($: $) {
+function redraw($: Api) {
   $.ui.invalidate('ui.render')
 }
 
@@ -215,20 +224,28 @@ function cancelTimers() {
   scoreTimer = null
 }
 
+// The call a permission dialog is for: the newest one under way with that tool
+function callFor(tool: string): string | null {
+  for (let i = running.length - 1; i >= 0; i--) {
+    if (running[i]!.tool === tool) return running[i]!.id || null
+  }
+  return null
+}
+
 // Claude carries on after a dialog you answered (or any tool call ended)
-function resumeAfterAnswer($: $) {
+function resumeAfterAnswer($: Api) {
   if (!resumeOnAnswer) return armDropIn($)
   resumeOnAnswer = false
   armDropIn($, RESUME_MS)
 }
 
-function armDropIn($: $, delayMs = config.dropInMs) {
+function armDropIn($: Api, delayMs = config.dropInMs) {
   if (!isOn || !isSetUp || !isTurnRunning || phase !== 'idle') return
   phase = 'waiting'
   dropTimer = $.clock.after(delayMs, () => void dropIn($))
 }
 
-async function dropIn($: $) {
+async function dropIn($: Api) {
   if (phase !== 'waiting') return
   dropTimer = null
   phase = 'playing'
@@ -276,7 +293,7 @@ async function dropIn($: $) {
 type PullReason = 'done' | 'aborted' | 'permission' | 'question' | 'needs-you'
 const NEEDS_YOU = new Set<PullReason>(['permission', 'question', 'needs-you'])
 
-async function pullOut($: $, reason: PullReason) {
+async function pullOut($: Api, reason: PullReason) {
   const was = phase
   cancelTimers()
   phase = 'idle'
@@ -298,13 +315,13 @@ async function pullOut($: $, reason: PullReason) {
 }
 
 // Stops the daemon, its server and bots, and (if set) the Minecraft it launched
-async function stopArena($: $): Promise<boolean> {
+async function stopArena($: Api): Promise<boolean> {
   const ran = await $.process.run(['node', ctlPath($), 'stop', ...ctlArgs(), ...(config.closeMinecraft ? [] : ['--keep-game'])]).catch(() => null)
   conn = null
   return lastJson(ran?.stdout ?? '')?.wasRunning === true
 }
 
-async function runSetup($: $, acceptEula: boolean) {
+async function runSetup($: Api, acceptEula: boolean) {
   if (isSettingUp) return
   if (!dataDir) {
     $.ui.log('⚔ needs HOME (or USERPROFILE) set to know where to keep its files.')
@@ -368,13 +385,15 @@ async function runSetup($: $, acceptEula: boolean) {
   })
 }
 
-async function askEula($: $): Promise<boolean> {
-  const answer = await $.ui
-    .ask("The arena runs a Minecraft server on your machine, which needs you to accept Minecraft's EULA (aka.ms/MinecraftEULA). Do you accept it?", [
-      'I accept the EULA',
-      'Cancel',
-    ])
-    .catch(() => 'Cancel')
+const EULA_QUESTION = "The arena runs a Minecraft server on your machine, which needs you to accept Minecraft's EULA (aka.ms/MinecraftEULA). Do you accept it?"
+
+async function askEula($: Api): Promise<boolean> {
+  let answer = 'Cancel'
+  try {
+    answer = await $.ui.ask(EULA_QUESTION, ['I accept the EULA', 'Cancel'])
+  } catch {
+    // Dismissed, or nobody there to ask: nothing is accepted
+  }
   return answer === 'I accept the EULA'
 }
 
@@ -395,15 +414,8 @@ export const register: Register = (on, options) => {
       windowId: await $.env.get('WINDOWID'),
       termProgram: await $.env.get('TERM_PROGRAM'),
     }
-    // Claude Code's own pid (the parent of a child it starts): the arena walks
-    // up from it to the window to hand you back to. Off the startup path.
-    $.clock.after(0, async () => {
-      const ran = await $.process.run(['node', '-e', 'process.stdout.write(String(process.ppid))'], { timeoutMs: 10_000 }).catch(() => null)
-      const pid = ran?.stdout.trim() ?? ''
-      if (/^[1-9]\d{0,9}$/.test(pid)) terminal = { ...terminal, pid }
-    })
     await $.command.register({
-      name: COMMAND,
+      name: 'pvp',
       description: 'Minecraft PvP vs bots while Claude works',
       argumentHint: '[on|off|setup|status|play|stop|bots N|difficulty D]',
     })
@@ -411,7 +423,7 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
-  on('command.run', { command: COMMAND }, async ($, e) => {
+  on('command.run', { command: 'pvp' }, async ($, e) => {
     const [word = '', value = ''] = e.args.trim().toLowerCase().split(/\s+/)
     switch (word) {
       case 'on': {
@@ -512,21 +524,14 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
-  // An "ask" here is not yet a prompt: in auto mode a classifier may answer
-  // it. Remember which call it was; PermissionRequest below says whether a
-  // dialog really goes up.
-  on('tool.check', async ($, e, next) => {
-    const result = await next(e)
-    if (e.tool_use_id && result.decision === 'ask') askedToolUseId = e.tool_use_id
-    return result
-  })
-
-  // A permission dialog is about to show (no settings hook answered it):
-  // Claude is waiting on you now
+  // Only watches: the request goes on to Claude Code and your settings
+  // unchanged, and their answer comes back unchanged. No answer from them
+  // means the dialog goes up and Claude is waiting on you, so the fight
+  // freezes. The mod never answers or changes a permission request.
   on('classic.PermissionRequest', async ($, e, next) => {
     const result = await next(e)
     if (result.decision === undefined) {
-      awaitingToolUseId = askedToolUseId
+      awaitingToolUseId = callFor(e.tool_name)
       await pullOut($, 'permission')
     }
     return result
@@ -544,15 +549,22 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
+  // Only watches: every call goes on to Claude Code unchanged and its result
+  // comes back unchanged. A question to you freezes the fight first, and a
+  // call that ends (answered, or just finished) puts you back in.
   on('tool.call', async ($, e, next) => {
     // Our own EULA question is not Claude needing you
-    if (next.origin.plugin === $.plugin.name) return next(e)
+    if (next.origin.plugin === 'mc-pvp-bots') return next(e)
     if (ASKS_USER.has(e.tool)) await pullOut($, 'question')
-    const result = await next(e)
-    if (e.tool_use_id === awaitingToolUseId) awaitingToolUseId = null
-    // Answered (or just finished) and Claude carries on: back in
-    resumeAfterAnswer($)
-    return result
+    const call = { id: e.tool_use_id ?? '', tool: e.tool }
+    running.push(call)
+    try {
+      return await next(e)
+    } finally {
+      running.splice(running.indexOf(call), 1)
+      if (call.id && call.id === awaitingToolUseId) awaitingToolUseId = null
+      resumeAfterAnswer($)
+    }
   })
 
   // An MCP form you filled in: Claude carries on
@@ -576,13 +588,7 @@ export const register: Register = (on, options) => {
     if (phase === 'playing' && conn) {
       cancelTimers()
       phase = 'idle'
-      await $.http
-        .fetch(`http://127.0.0.1:${conn.port}/pause`, {
-          method: 'POST',
-          headers: { 'x-arena-token': conn.token, 'content-type': 'application/json' },
-          body: JSON.stringify({ reason: 'lost' }),
-        })
-        .catch(() => undefined)
+      await sendPause($, conn)
     }
     return next(e)
   })
